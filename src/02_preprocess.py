@@ -2,8 +2,10 @@
 
 For every video_id listed in data/splits.csv (and only those):
 
-VIDEO   N_FRAMES evenly spaced frames -> largest face (OpenCV Haar cascade) cropped with a
-        20% margin (centre crop if no face is found) -> resized to IMG_SIZE x IMG_SIZE
+VIDEO   N_FRAMES evenly spaced frames -> black letterbox / pillarbox bars removed
+        -> largest face (OpenCV Haar cascade) cropped with a 20% margin. Face boxes narrower
+        than 10% of the picture width are ignored (usually false detections); if no face is
+        left, the centre of the picture is used -> resized to IMG_SIZE x IMG_SIZE
         -> data/processed/frames/<video_id>_<k>.jpg
         (ImageNet mean/std normalisation is applied later, in Phase 3.)
 
@@ -25,11 +27,13 @@ Clips that fail (unreadable video, no audio, ...) are logged, written to
 data/processed/failed_clips.csv and removed from splits.csv.
 
 Resume: a clip that already has all its frames and its wav is skipped, so a re-run after new
-clips were added to splits.csv only processes the new ones. Use --force to redo everything
-(needed after changing IMG_SIZE or the audio settings in config.py).
+clips were added to splits.csv only processes the new ones. The settings used are stored in
+data/processed/preprocess_settings.json; if a Phase 2 setting in config.py changes, every clip
+is redone automatically. --force redoes everything as well.
 
 Run:  python src/02_preprocess.py [--force]
 """
+import json
 import os
 import re
 import shutil
@@ -89,14 +93,33 @@ def read_frames(video_path):
     return frames
 
 
+def content_box(frames):
+    """Box (x0, y0, x1, y1) of the real picture, without black letterbox / pillarbox bars.
+    A row or column counts as a bar only if it is (almost) black in ALL frames of the clip."""
+    brightest = np.max([cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) for f in frames], axis=0)
+    height, width = brightest.shape
+    cols = np.where(brightest.mean(axis=0) > config.BORDER_BLACK_LEVEL)[0]
+    rows = np.where(brightest.mean(axis=1) > config.BORDER_BLACK_LEVEL)[0]
+    if len(cols) == 0 or len(rows) == 0:                       # whole clip is dark: keep it all
+        return 0, 0, width, height
+    x0, x1, y0, y1 = cols[0], cols[-1] + 1, rows[0], rows[-1] + 1
+    if (x1 - x0) < config.MIN_CONTENT_FRAC * width or (y1 - y0) < config.MIN_CONTENT_FRAC * height:
+        return 0, 0, width, height                             # implausible: do not crop
+    return int(x0), int(y0), int(x1), int(y1)
+
+
 def crop_face(frame):
-    """Crop the largest detected face (+ margin); centre crop if none. Returns (image, found)."""
+    """Crop the largest detected face (+ margin); centre crop if none. Returns (image, found).
+    `frame` is the picture with the black bars already removed."""
     height, width = frame.shape[:2]
     # Detect on a smaller grey copy: much faster and the detector does not need full HD.
     scale = min(1.0, config.FACE_DETECT_SIDE / max(height, width))
     small = cv2.resize(frame, None, fx=scale, fy=scale) if scale < 1 else frame
     gray = cv2.equalizeHist(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY))
-    faces = FACE_DETECTOR.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
+    # minSize: boxes narrower than MIN_FACE_FRAC of the picture width are not reported at all.
+    min_side = max(1, int(config.MIN_FACE_FRAC * small.shape[1]))
+    faces = FACE_DETECTOR.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5,
+                                           minSize=(min_side, min_side))
 
     found = len(faces) > 0
     if found:
@@ -118,19 +141,16 @@ def process_frames(video_id):
     frames = read_frames(utils.video_path(video_id))
     if frames is None:
         raise RuntimeError("video could not be decoded")
+    x0, y0, x1, y1 = content_box(frames)               # same bars in every frame of a clip
     faces_found = 0
     for k, frame in enumerate(frames):
-        crop, found = crop_face(frame)
+        crop, found = crop_face(frame[y0:y1, x0:x1])
         faces_found += int(found)
         # Write to a temporary name first, so an interrupted run never leaves a half-written jpg.
         tmp = utils.frame_path(video_id, k).replace(".jpg", ".tmp.jpg")
         cv2.imwrite(tmp, crop, [cv2.IMWRITE_JPEG_QUALITY, config.JPG_QUALITY])
         os.replace(tmp, utils.frame_path(video_id, k))
     return faces_found
-
-
-def frames_done(video_id):
-    return all(os.path.exists(utils.frame_path(video_id, k)) for k in range(config.N_FRAMES))
 
 
 # ----------------------------------------------------------------------------
@@ -284,6 +304,44 @@ def figure_text_length(plt, df):
 # ----------------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------------
+def preprocess_settings():
+    """Every setting that changes what is inside the frame / wav files."""
+    return {
+        "code_version": 2,            # raise when the processing code itself changes
+        "n_frames": config.N_FRAMES, "img_size": config.IMG_SIZE,
+        "face_margin": config.FACE_MARGIN, "face_detect_side": config.FACE_DETECT_SIDE,
+        "min_face_frac": config.MIN_FACE_FRAC, "border_black_level": config.BORDER_BLACK_LEVEL,
+        "min_content_frac": config.MIN_CONTENT_FRAC, "jpg_quality": config.JPG_QUALITY,
+        "sample_rate": config.SAMPLE_RATE, "noise_quiet_percent": config.NOISE_QUIET_PERCENT,
+        "noise_gate_strength": config.NOISE_GATE_STRENGTH, "noise_gate_floor": config.NOISE_GATE_FLOOR,
+        "trim_top_db": config.TRIM_TOP_DB, "peak_level": config.PEAK_LEVEL,
+        "min_audio_sec": config.MIN_AUDIO_SEC,
+    }
+
+
+def settings_timestamp(force):
+    """Write preprocess_settings.json if the settings changed (or --force) and return its
+    modification time. Frames / wav files older than that time are redone."""
+    current, stored = preprocess_settings(), None
+    if os.path.exists(config.PREPROCESS_SETTINGS_JSON):
+        with open(config.PREPROCESS_SETTINGS_JSON) as f:
+            stored = json.load(f)
+    if force or stored != current:
+        if os.listdir(config.FRAMES_DIR) or os.listdir(config.AUDIO_DIR):
+            log.info("--force given: redoing all clips" if force else
+                     "Phase 2 settings changed since the cached files were made: redoing all clips")
+        with open(config.PREPROCESS_SETTINGS_JSON, "w") as f:
+            json.dump(current, f, indent=2)
+    return os.path.getmtime(config.PREPROCESS_SETTINGS_JSON)
+
+
+def clip_is_current(video_id, since):
+    """True if the clip has all its frames + wav and they were made with the current settings."""
+    paths = [utils.frame_path(video_id, k) for k in range(config.N_FRAMES)]
+    paths.append(utils.audio_path(video_id))
+    return all(os.path.exists(p) and os.path.getmtime(p) >= since for p in paths)
+
+
 def append_log_row(row):
     """One line per finished clip: face-detection and audio-length statistics."""
     new_file = not os.path.exists(config.PREPROCESS_LOG_CSV)
@@ -304,7 +362,8 @@ def main():
     ids = df["video_id"].tolist()
 
     # ---- frames + audio: only the clips of splits.csv that are not finished yet ----
-    todo = [v for v in ids if force or not (frames_done(v) and audio_done(v))]
+    since = settings_timestamp(force)
+    todo = [v for v in ids if not clip_is_current(v, since)]
     log.info(f"{len(ids)} clips in splits.csv: {len(ids) - len(todo)} already preprocessed, "
              f"{len(todo)} to process")
     failures = []                                     # (video_id, reason)
@@ -322,7 +381,7 @@ def main():
     log.info(f"frames + audio: {len(todo) - len(failures)} processed now, {len(failures)} failed")
 
     # ---- drop every clip that does not have all frames + its wav ----
-    complete = df["video_id"].map(lambda v: frames_done(v) and audio_done(v))
+    complete = df["video_id"].map(lambda v: clip_is_current(v, since))
     known_reasons = dict(failures)
     failed = pd.DataFrame({"video_id": df.loc[~complete, "video_id"]})
     failed["reason"] = failed["video_id"].map(lambda v: known_reasons.get(v, "frames or wav missing"))

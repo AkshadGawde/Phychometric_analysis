@@ -113,6 +113,135 @@ def audio_path(video_id):
 
 
 # ----------------------------------------------------------------------------
+# Feature files (Phases 3-5)
+#
+# features/ids.csv        the video_id order that EVERY feature file must follow
+# features/<name>.npy     one row per clip
+# features/<name>.ids.csv the video_id of each row of <name>.npy. It lets us (a) prove that a
+#                         file really matches ids.csv, row by row, and (b) reuse rows from an
+#                         earlier run, so only new clips are computed.
+# ----------------------------------------------------------------------------
+def feature_path(name):
+    return os.path.join(config.FEATURES_DIR, f"{name}.npy")
+
+
+def feature_ids_path(name):
+    return os.path.join(config.FEATURES_DIR, f"{name}.ids.csv")
+
+
+def write_ids(ids, path=None):
+    import pandas as pd
+    pd.DataFrame({"video_id": list(ids)}).to_csv(path or config.IDS_CSV, index=False)
+
+
+def read_ids(path=None):
+    import pandas as pd
+    return pd.read_csv(path or config.IDS_CSV, dtype=str, keep_default_na=False)["video_id"].tolist()
+
+
+def save_features(name, ids, matrix):
+    """Save features/<name>.npy with its row ids. NaN/inf are replaced by 0 and counted."""
+    matrix = np.asarray(matrix, dtype=np.float32)
+    bad = ~np.isfinite(matrix)
+    if bad.any():
+        get_logger("features").info(f"WARNING: {name}: {int(bad.sum())} NaN/inf value(s) replaced by 0")
+        matrix = np.where(bad, 0.0, matrix).astype(np.float32)
+    write_ids(ids, feature_ids_path(name))
+    np.save(feature_path(name), matrix)
+    return int(bad.sum())
+
+
+def load_feature_cache(name, source_mtime=None):
+    """Rows computed in an earlier run, as {video_id: vector} ({} if there are none).
+    source_mtime(video_id) = when the clip's input (frames / wav) was last written; a row is
+    reused only if the feature file is newer, so re-made inputs are never paired with old features."""
+    if not (os.path.exists(feature_path(name)) and os.path.exists(feature_ids_path(name))):
+        return {}
+    matrix, ids = np.load(feature_path(name)), read_ids(feature_ids_path(name))
+    if len(matrix) != len(ids):
+        return {}
+    saved_at = os.path.getmtime(feature_path(name))
+    return {v: matrix[i] for i, v in enumerate(ids)
+            if source_mtime is None or source_mtime(v) <= saved_at}
+
+
+def cached_extract(names, ids, compute_batch, source_mtime, batch_size, desc):
+    """Fill features/<name>.npy for every name in `names` (all produced by the same model).
+
+    compute_batch(batch_ids) -> {name: array of shape (len(batch_ids), dim)}
+    Clips that already have an up-to-date row in all the files are skipped. Partial results are
+    saved every FEATURE_CHECKPOINT_CLIPS clips, so an interrupted run continues where it stopped.
+    Returns (number of clips computed now, seconds spent computing them, NaN/inf values replaced).
+    """
+    import time
+    from tqdm import tqdm
+    log = get_logger("features")
+    cache = {name: load_feature_cache(name, source_mtime) for name in names}
+    todo = [v for v in ids if not all(v in cache[name] for name in names)]
+    log.info(f"{desc}: {len(ids)} clips, {len(ids) - len(todo)} already done, {len(todo)} to compute")
+
+    def save(final):
+        replaced = 0
+        for name in names:
+            rows = [v for v in ids if v in cache[name]]
+            if rows and (final or len(rows) < len(ids)):
+                replaced += save_features(name, rows, np.stack([cache[name][v] for v in rows]))
+        return replaced
+
+    start, since_checkpoint = time.time(), 0
+    for i in tqdm(range(0, len(todo), batch_size), desc=desc, unit="batch"):
+        batch = todo[i:i + batch_size]
+        out = compute_batch(batch)
+        for name in names:
+            for video_id, row in zip(batch, np.asarray(out[name])):
+                cache[name][video_id] = row
+        since_checkpoint += len(batch)
+        if since_checkpoint >= config.FEATURE_CHECKPOINT_CLIPS:
+            save(final=False)
+            since_checkpoint = 0
+    seconds = time.time() - start
+    replaced = save(final=True)
+    return len(todo), seconds, replaced
+
+
+def check_features(names):
+    """Acceptance check shared by Phases 3-5. Each features/<name>.npy must have exactly the
+    rows of ids.csv in the same order, the expected number of columns and no NaN/inf.
+    Returns {name: shape}; stops the script if a file does not match."""
+    ids = read_ids()
+    shapes = {}
+    for name in names:
+        if not os.path.exists(feature_path(name)):
+            sys.exit(f"ACCEPTANCE FAILED: {feature_path(name)} is missing")
+        matrix = np.load(feature_path(name))
+        if read_ids(feature_ids_path(name)) != ids or matrix.shape[0] != len(ids):
+            sys.exit(f"ACCEPTANCE FAILED: rows of {name}.npy do not match features/ids.csv")
+        expected = config.FEATURE_DIMS.get(name)
+        if matrix.ndim != 2 or (expected is not None and matrix.shape[1] != expected):
+            sys.exit(f"ACCEPTANCE FAILED: {name}.npy has shape {matrix.shape}, "
+                     f"expected ({len(ids)}, {expected})")
+        if not np.isfinite(matrix).all():
+            sys.exit(f"ACCEPTANCE FAILED: {name}.npy contains NaN/inf")
+        shapes[name] = matrix.shape
+    return shapes
+
+
+def stale_feature_files(skip=()):
+    """Names of feature files in features/ whose rows do NOT match the current ids.csv
+    (e.g. made by another script before splits.csv changed). Their script must be re-run."""
+    ids = read_ids()
+    stale = []
+    for fname in sorted(os.listdir(config.FEATURES_DIR)):
+        name = fname[:-len(".npy")]
+        if not fname.endswith(".npy") or name in skip:
+            continue
+        ids_file = feature_ids_path(name)
+        if not os.path.exists(ids_file) or read_ids(ids_file) != ids:
+            stale.append(name)
+    return stale
+
+
+# ----------------------------------------------------------------------------
 # Metrics
 # ----------------------------------------------------------------------------
 def classification_metrics(y_true, y_pred, y_prob=None, name=""):

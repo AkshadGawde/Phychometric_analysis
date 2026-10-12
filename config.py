@@ -38,6 +38,9 @@ PROCESSED_DIR = os.path.join(DATA_DIR, "processed")
 FRAMES_DIR = os.path.join(PROCESSED_DIR, "frames")
 AUDIO_DIR = os.path.join(PROCESSED_DIR, "audio")
 SPLITS_CSV = os.path.join(DATA_DIR, "splits.csv")
+# The Phase 2 settings the cached frames / wav files were made with. Files older than this
+# file are redone, so a changed setting can never leave a mix of old and new outputs.
+PREPROCESS_SETTINGS_JSON = os.path.join(PROCESSED_DIR, "preprocess_settings.json")
 PREPROCESS_LOG_CSV = os.path.join(PROCESSED_DIR, "preprocess_log.csv")   # one row per finished clip
 FAILED_CLIPS_CSV = os.path.join(PROCESSED_DIR, "failed_clips.csv")       # clips dropped in Phase 2
 
@@ -68,6 +71,9 @@ SPLIT_RATIO_OK = {"train": (65, 75), "val": (10, 20), "test": (10, 20)}
 # ----------------------------------------------------------------------------
 FACE_MARGIN = 0.20          # extra border around the detected face, as a fraction of its size
 FACE_DETECT_SIDE = 640      # frames are shrunk to this longest side for face detection (speed)
+MIN_FACE_FRAC = 0.10        # face boxes narrower than 10% of the picture width are ignored
+BORDER_BLACK_LEVEL = 16     # rows/columns darker than this (0-255) in all frames = black bars
+MIN_CONTENT_FRAC = 0.20     # if less than this would remain after removing bars, keep the full frame
 JPG_QUALITY = 95
 
 NOISE_QUIET_PERCENT = 10    # the quietest 10% of frames are taken as "background noise"
@@ -81,6 +87,19 @@ FILLERS = ["um", "uh", "er", "ah", "umm", "uhh", "uhm", "erm"]   # always remove
 COMMA_FILLERS = ["like"]    # removed only when set off by punctuation: "it was, like, great"
 
 N_SAMPLE_CLIPS = 2          # clips shown in results/sample_frames.png
+
+# ----------------------------------------------------------------------------
+# Phase 3-5 feature extraction settings
+# ----------------------------------------------------------------------------
+IMAGENET_MEAN = [0.485, 0.456, 0.406]     # normalisation the ResNet-50 weights were trained with
+IMAGENET_STD = [0.229, 0.224, 0.225]
+FACE_EMOTION_MODEL = "trpakov/vit-face-expression"
+VISUAL_BATCH_CLIPS = 8                    # clips per batch (= 8 x N_FRAMES images)
+FEATURE_CHECKPOINT_CLIPS = 200            # partial results are saved every 200 new clips
+VISUAL_EMOTION_LABELS_JSON = os.path.join(FEATURES_DIR, "visual_emotion_labels.json")
+
+# Expected number of columns of each feature file (checked after extraction).
+FEATURE_DIMS = {"visual_cnn": 2048, "visual_emotion": 7, "visual_vit": 768}
 
 # ----------------------------------------------------------------------------
 # Which feature files make up each modality (used from Phase 6 onwards).

@@ -212,7 +212,11 @@ def add_split(df):
     # Second cut: split the remainder into val and test
     val_share = config.VAL_FRAC / (config.VAL_FRAC + config.TEST_FRAC)
     gss2 = GroupShuffleSplit(n_splits=1, train_size=val_share, random_state=config.SEED)
-    val_sub, test_sub = next(gss2.split(rest_idx, groups=groups[rest_idx]))
+    try:
+        val_sub, test_sub = next(gss2.split(rest_idx, groups=groups[rest_idx]))
+    except ValueError:
+        sys.exit(f"Too few different youtube_ids ({df.youtube_id.nunique()}) to build "
+                 f"train/val/test splits - use more clips (increase MAX_CLIPS).")
 
     df["split"] = ""
     df.iloc[train_idx, df.columns.get_loc("split")] = "train"
@@ -233,13 +237,11 @@ def add_binary_labels(df):
 
 def report_split_ratio(df):
     """Print the clip-level train/val/test share. We split by youtube_id, so the share of
-    CLIPS can drift from 70/15/15 - on real data, warn when it drifts too far."""
+    CLIPS can drift from 70/15/15 - warn when it drifts too far."""
     share = df["split"].value_counts(normalize=True) * 100
     share = {s: float(share.get(s, 0.0)) for s in ["train", "val", "test"]}
     log.info("clip-level split ratio train/val/test = "
              f"{share['train']:.1f} / {share['val']:.1f} / {share['test']:.1f} %")
-    if utils.labels_are_fake():
-        return                      # smoke subset: too few youtube_ids for a stable ratio
     for name, (low, high) in config.SPLIT_RATIO_OK.items():
         if not low <= share[name] <= high:
             log.info(f"WARNING: {name} holds {share[name]:.1f}% of the clips, "
@@ -258,11 +260,14 @@ def acceptance_check(df):
     if leaked:
         problems.append(f"{leaked} youtube_id(s) appear in more than one split")
 
-    # (b) each trait's positive rate in train is 45-55%
+    # (b) each trait's positive rate in train is 45-55%.
+    # With very few train clips an exact 45-55% can be impossible (2 of 3 = 66.7%), so being
+    # at most ONE clip away from an even split is also accepted. On real data this changes nothing.
     train = df[df.split == "train"]
     for t in config.TRAITS:
-        rate = train[f"{t}_bin"].mean() * 100
-        if not 45 <= rate <= 55:
+        n_positive = train[f"{t}_bin"].sum()
+        rate = n_positive / len(train) * 100
+        if not (45 <= rate <= 55 or abs(n_positive - len(train) / 2) <= 1):
             problems.append(f"{t}: train positive rate {rate:.1f}% is outside 45-55%")
 
     # (c) no NaN in trait columns
