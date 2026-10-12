@@ -1,0 +1,2 @@
+data/splits.csv was built from RANDOM dummy labels (DUMMY_FAKE_annotation_RANDOM_SCORES.pkl).
+Results are meaningless.

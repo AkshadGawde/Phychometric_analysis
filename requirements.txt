@@ -1,0 +1,18 @@
+torch
+torchvision
+transformers
+sentence-transformers
+librosa
+soundfile
+moviepy
+opencv-python<5   # OpenCV 5 removed the Haar cascade face detector used in Phase 2
+scikit-learn
+pandas
+numpy
+matplotlib
+seaborn
+tqdm
+streamlit
+pillow
+joblib
+datasets  # smoke helper only

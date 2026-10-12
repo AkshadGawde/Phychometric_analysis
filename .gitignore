@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Large / licensed data and generated artefacts
+data/raw/
+data/processed/
+features/*.npy
+results/models/
