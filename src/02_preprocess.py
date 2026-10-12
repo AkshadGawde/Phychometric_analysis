@@ -226,7 +226,7 @@ def figure_sample_frames(plt, sample_ids):
     fig.suptitle(f"Phase 2 output: {cols} evenly spaced face crops per clip "
                  f"({config.IMG_SIZE}×{config.IMG_SIZE} px)",
                  x=0.01, ha="left", fontsize=12, fontweight="bold")
-    fig.tight_layout()
+    fig.tight_layout(h_pad=1.5)
     fig.savefig(os.path.join(config.RESULTS_DIR, "sample_frames.png"))
     plt.close(fig)
 
