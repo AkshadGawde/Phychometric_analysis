@@ -86,7 +86,7 @@ def build_resnet(device):
 def build_vit(device):
     from transformers import AutoImageProcessor, AutoModelForImageClassification
     processor = AutoImageProcessor.from_pretrained(config.FACE_EMOTION_MODEL)
-    model = AutoModelForImageClassification.from_pretrained(config.FACE_EMOTION_MODEL)
+    model = utils.load_pretrained(AutoModelForImageClassification, config.FACE_EMOTION_MODEL)
     model = model.eval().to(device)
     # Fixed class order = the model's own output index order (0, 1, 2, ...).
     labels = [model.config.id2label[i] for i in range(model.config.num_labels)]
@@ -119,6 +119,8 @@ def run_model(label, names, ids, build, device):
     per_clip = f"{sec / n_new:.3f} s per clip" if n_new else "nothing new to compute"
     log.info(f"{label}: model loaded in {load_sec:.1f} s; {n_new} clips in {sec:.1f} s = {per_clip}; "
              f"NaN/inf replaced: {replaced}")
+    del built, compute_batch          # drop the model before the next one is loaded (low RAM)
+    utils.free_memory()
     return extra
 
 

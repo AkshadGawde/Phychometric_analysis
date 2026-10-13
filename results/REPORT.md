@@ -1,0 +1,161 @@
+# Multimodal Psychometric Assessment — Final Report
+
+**How to read the numbers.** *Accuracy*: share of clips put on the right side of the median. *F1*: balance of catching the "high" clips and not raising false alarms (1 = perfect). Careful: simply answering "high" for every clip already gets a fairly high F1 here (see the first row of Table 1), so F1 on its own flatters weak models — *AUC* is the fairest single number. *AUC*: chance that a random "high" clip gets a higher score than a random "low" one (0.5 = guessing, 1 = perfect). *1 − MAE*: 1 minus the average error on the raw 0–1 score (the official ChaLearn measure). Square brackets give the 95% confidence interval: re-sampling the test clips 1,000 times, the value stayed in this range 95% of the time. All numbers are on the test clips, which no model saw during training or tuning.
+
+## 1. The data actually used
+
+- **Clips used:** 1500 short talking-head videos (about 15 s each) from 1177 different YouTube videos, all with real ChaLearn First Impressions labels. 0 clip(s) were dropped in preprocessing.
+- **Labels:** the official ChaLearn annotation files (annotation_test.pkl, annotation_training.pkl, annotation_validation.pkl). Each clip has five scores between 0 and 1 given by crowd workers, i.e. *apparent* personality — how the person comes across, not a personality test. For classification a score counts as "high" when it is at or above the median of the training clips.
+- **Transcripts:** transcription_hf_mirror.pkl, transcription_hf_subset.pkl — taken from the public Hugging Face mirror of the dataset (`yeray142/first-impressions-v2`), because the official transcript files were not available. The videos come from the official ChaLearn subset and the same mirror.
+- **Split:** by YouTube video, so the same person never appears in two parts:
+
+| part | clips | YouTube videos | share of clips |
+|---|---|---|---|
+| train | 1041 | 823 | 69.4% |
+| val | 238 | 177 | 15.9% |
+| test | 221 | 177 | 14.7% |
+
+- **"Neuroticism" is really emotional stability.** The dataset documentation describes this label as emotional stability (the reverse of neuroticism). It correlates *positively* with the other four traits here (r = 0.72 to 0.81), which fits that description: a high score means calm and stable.
+- **Halo effect.** The five labels are strongly related (average correlation between two traits r = 0.71, range 0.59–0.81). Raters who like a person tend to score them high on everything, so the five tasks are far from independent.
+
+## 2. Table 1 — Baselines, single modalities and fusion (mean over the five traits, test split)
+
+| model | accuracy | F1 | AUC | 1 − MAE |
+|---|---|---|---|---|
+| Always the majority class | 0.465 | 0.635 | 0.500 | – |
+| Random guessing (class balance of train) | 0.501 | 0.494 | 0.503 | – |
+| Always the training average score | – | – | – | 0.882 [0.873, 0.892] |
+| Face (visual) | 0.622 [0.581, 0.659] | 0.604 [0.542, 0.652] | 0.660 [0.611, 0.706] | 0.890 [0.881, 0.897] |
+| Voice (audio) | 0.655 [0.610, 0.698] | 0.634 [0.567, 0.687] | 0.718 [0.665, 0.767] | 0.897 [0.888, 0.904] |
+| Words (text) | 0.536 [0.494, 0.573] | 0.533 [0.477, 0.585] | 0.552 [0.502, 0.601] | 0.875 [0.864, 0.886] |
+| Words, TF-IDF baseline | 0.536 [0.500, 0.571] | 0.532 [0.478, 0.577] | 0.541 [0.498, 0.586] | 0.866 [0.856, 0.875] |
+| Early fusion | 0.651 [0.608, 0.689] | 0.615 [0.556, 0.666] | 0.712 [0.661, 0.757] | 0.896 [0.888, 0.903] |
+| Intermediate fusion (network) | 0.667 [0.620, 0.711] | 0.625 [0.555, 0.684] | 0.738 [0.683, 0.786] | – |
+| Late fusion (average) | 0.624 [0.587, 0.661] | 0.608 [0.553, 0.657] | 0.697 [0.654, 0.739] | 0.899 [0.891, 0.907] |
+| Late fusion (weighted) | 0.626 [0.588, 0.663] | 0.608 [0.555, 0.658] | 0.701 [0.658, 0.743] | 0.900 [0.891, 0.907] |
+
+*The model chosen on the validation set is late fusion (weighted); the fusion type chosen on validation is late fusion (weighted).*
+
+## 3. Table 2 — Per trait: late fusion (weighted) vs voice (audio)
+
+| trait | F1 Late fusion (weighted) | F1 Voice (audio) | F1 difference | AUC Late fusion (weighted) | AUC Voice (audio) |
+|---|---|---|---|---|---|
+| Openness | 0.592 [0.500, 0.672] | 0.613 [0.516, 0.692] | -0.021 | 0.692 [0.608, 0.761] | 0.722 [0.648, 0.792] |
+| Conscientiousness | 0.679 [0.599, 0.755] | 0.713 [0.631, 0.788] | -0.034 | 0.777 [0.712, 0.845] | 0.765 [0.696, 0.830] |
+| Extraversion | 0.597 [0.503, 0.678] | 0.642 [0.545, 0.718] | -0.044 | 0.726 [0.650, 0.793] | 0.721 [0.641, 0.794] |
+| Agreeableness | 0.606 [0.513, 0.676] | 0.557 [0.464, 0.639] | +0.049 | 0.689 [0.604, 0.760] | 0.674 [0.593, 0.743] |
+| Neuroticism | 0.566 [0.479, 0.644] | 0.645 [0.560, 0.720] | -0.079 | 0.619 [0.539, 0.693] | 0.707 [0.630, 0.778] |
+
+## 4. Table 3 — Ablation of the late fusion (weighted) model
+
+Drop in test F1 when one modality is removed (positive = the model was better with it):
+
+| trait | without face | without voice | without words |
+|---|---|---|---|
+| Openness | +0.056 | +0.017 | -0.068 |
+| Conscientiousness | +0.003 | +0.073 | -0.000 |
+| Extraversion | +0.041 | -0.021 | -0.043 |
+| Agreeableness | -0.021 | +0.004 | +0.007 |
+| Neuroticism | -0.070 | +0.025 | +0.034 |
+| **mean** | **+0.002** | **+0.019** | **-0.014** |
+
+## 5. Diagnostics — do the models really learn?
+
+**Overfitting (mean F1 over the five traits).** A big gap between the training clips and the test clips means the model memorised rather than learned.
+
+| model | train F1 | validation F1 | test F1 | train − test | flagged traits |
+|---|---|---|---|---|---|
+| Face (visual) | 0.934 | 0.603 | 0.604 | 0.331 | 5 |
+| Voice (audio) | 0.710 | 0.611 | 0.634 | 0.076 | 0 |
+| Words (text) | 0.762 | 0.555 | 0.533 | 0.229 | 4 |
+| Words, TF-IDF baseline | 0.989 | 0.501 | 0.532 | 0.458 | 5 |
+| Early fusion | 0.945 | 0.624 | 0.615 | 0.330 | 5 |
+| Late fusion (average) | 0.943 | 0.622 | 0.608 | 0.335 | 5 |
+| Late fusion (weighted) | 0.943 | 0.627 | 0.608 | 0.335 | 5 |
+| Intermediate fusion (network) | 0.797 | 0.598 | 0.625 | 0.172 | 3 |
+
+**Label-shuffle test.** The late fusion (weighted) model was retrained 3 times on training labels shuffled at random, so no real pattern was left to learn. Its test AUC fell to 0.526 (F1 0.511). That is chance level, as it should be: there is no sign of information leaking from the test set.
+
+**Learning curve** ([figure](diagnostics/learning_curve.png)):
+
+| share of training clips | training clips | test F1 | test AUC |
+|---|---|---|---|
+| 25% | 261 | 0.608 | 0.654 |
+| 50% | 516 | 0.609 | 0.674 |
+| 75% | 777 | 0.621 | 0.697 |
+| 100% | 1041 | 0.608 | 0.701 |
+
+**Fusion network training** ([figure](intermediate_loss.png)): validation loss was lowest at epoch 3 of 13; the weights of that epoch are used.
+
+## 6. Top cues per trait
+
+Voice features are the five strongest weights of a logistic regression on the standardised audio features (+ = a higher value pushes towards "high"). Words come from a logistic regression on TF-IDF. Emotion links are correlations between the emotion probabilities and the raw scores on the training clips ([heat map](emotion_trait_corr.png)).
+
+**Openness**
+
+- Voice: `mfcc5_std` (+); `voice emotion: fearful` (+); `mfcc6_std` (+); `voice emotion: angry` (+); `mfcc24_mean` (+)
+- Words used more by clips rated high: i, about, so, was, i have, know, always, by, to, them
+- Words used more by clips rated low: use, your, three, now, do, than, we, got, here, i had
+- Strongest emotion links: face emotion: happy (r = +0.30); face emotion: neutral (r = -0.20); voice emotion: sad (r = -0.19)
+
+**Conscientiousness**
+
+- Voice: `mfcc12_mean` (−); `mfcc4_std` (+); `mfcc3_std` (+); `mfcc6_mean` (−); `mfcc40_mean` (−)
+- Words used more by clips rated high: year, is, it would, to, these, by, things, soon, of the, if it's
+- Words used more by clips rated low: you ever, from the, don't have, color, you get, of this, that the, may, listen, probably
+- Strongest emotion links: voice emotion: sad (r = -0.27); voice emotion: angry (r = +0.22); voice emotion: surprised (r = +0.22)
+
+**Extraversion**
+
+- Voice: `mfcc35_std` (+); `mfcc30_std` (+); `mfcc39_std` (−); `mfcc15_std` (+); `mfcc16_std` (+)
+- Words used more by clips rated high: i, really, this, so, have, about, school, will, always, was
+- Words used more by clips rated low: a, your, do, use, stuff, other, you know, whatever, take, i do
+- Strongest emotion links: face emotion: happy (r = +0.43); face emotion: neutral (r = -0.23); face emotion: angry (r = -0.20)
+
+**Agreeableness**
+
+- Voice: `mfcc6_mean` (−); `voice emotion: angry` (+); `voice emotion: calm` (−); `pitch_std` (−); `mfcc6_std` (+)
+- Words used more by clips rated high: of, that, in, the, but, kind of, kind, in the, or, have
+- Words used more by clips rated low: hair, i'm, my, on, are, i don't, your, tell, do you, do
+- Strongest emotion links: face emotion: happy (r = +0.24); voice emotion: sad (r = -0.19); face emotion: sad (r = -0.18)
+
+**Neuroticism**
+
+- Voice: `mfcc3_std` (+); `mfcc2_mean` (+); `voice emotion: sad` (−); `mfcc6_std` (+); `mfcc19_mean` (+)
+- Words used more by clips rated high: so, always, did, see, to, of, in, kind, kind of, in a
+- Words used more by clips rated low: tell, do, i don't, use, are you, and i, and a, don't have, to a, may
+- Strongest emotion links: face emotion: happy (r = +0.28); voice emotion: sad (r = -0.27); voice emotion: happy (r = +0.26)
+
+
+## 7. VERDICT
+
+**Learning beyond the baselines — yes, but modestly:** the model chosen on validation, late fusion (weighted), reaches a mean test AUC of 0.701 (95% CI 0.658–0.743) and accuracy 0.626 (0.588–0.663), against AUC 0.503 and accuracy 0.501 for random guessing and 0.465 accuracy for always answering the most common class; both intervals lie clearly above those baselines, but its F1 (0.608) is below the 0.635 that "always high" gets, so F1 alone would hide the learning. **On the raw 0–1 scores** the best 1 − MAE is 0.900 (late fusion (weighted)), only +0.017 better than always predicting the training average (0.882), because the scores bunch up around the middle. **Fusion is not significantly better than the best single modality:** late fusion (weighted) changes mean F1 by -0.026 (95% CI -0.072 to +0.020) and AUC by -0.017 (-0.058 to +0.022) compared with voice (audio); both intervals include zero (on the test clips the highest AUC was intermediate fusion (network) at 0.738, but it was not the validation choice). **Voice, face, words:** on its own the strongest modality is voice (AUC 0.718), followed by face (0.660) and words (0.552); in the ablation removing voice hurts most, but every mean change is small (between -0.014 and +0.019 F1) next to the ±0.052 uncertainty of the F1 itself. **Overfitting is clear but did not fool model selection:** the most flexible models fit their training clips much better (train − test F1 up to 0.46 for words, tf-idf baseline), while the compact voice model shows only 0.08; validation and test F1 agree to within 0.030 for every model, so choices made on validation hold up on test. **More data would help somewhat:** going from 261 to 1041 training clips raises test AUC from 0.654 to 0.701 (last step +0.004) while F1 stays near 0.608, so the ranking of clips keeps improving with data, though the gains are getting smaller. **Compared with published work:** the best published First Impressions systems reach about 0.91 mean 1 − MAE with all 10,000 clips and models trained end to end; our best 0.900 uses 1500 clips (15% of the data), frozen pretrained features and 8 frames per clip, so it is 0.010 lower. Because always guessing the average already scores 0.882 here, that gap is bigger than it looks, and the comparison is only rough since our test clips are not the official test set.
+
+## Limitations
+
+- Only 1500 of the 10,000 clips were used, and our own test split is smaller and different from the official one.
+- The labels are *apparent* personality — first impressions of crowd workers — not personality measured by a validated questionnaire.
+- The data and labels may carry demographic bias (age, gender, ethnicity, attractiveness affect first impressions); we did not test for it.
+- All pretrained models were frozen; only 8 frames per clip were used, and the speech-emotion model was trained on acted speech.
+- Turning scores into high / low at the median throws away information and makes clips near the median hard to classify.
+- **This is a research prototype. It must not be used to judge or diagnose anyone.**
+
+## Future work
+
+- Use all 10,000 clips, more frames, and fine-tune the visual and speech models end to end.
+- Model time (how expressions and voice change during the clip) instead of averages.
+- Move from apparent personality to clinically meaningful targets: the DAIC-WOZ interview corpus with PHQ-8 depression scores is the natural next dataset for the same face + voice + words pipeline.
+
+
+## Figures
+
+- [Sample face crops](sample_frames.png)
+- [Raw vs cleaned audio](sample_waveform.png)
+- [Transcript lengths](text_length_hist.png)
+- [Single modalities, F1 per trait](unimodal_f1.png)
+- [Single modalities vs fusion](unimodal_vs_fusion.png)
+- [Fusion network training curve](intermediate_loss.png)
+- [Ablation](ablation.png)
+- [Emotion vs trait correlations](emotion_trait_corr.png)
+- [Confusion matrices of the best model](confusion_best.png)
+- [Learning curve](diagnostics/learning_curve.png)

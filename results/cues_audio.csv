@@ -1,0 +1,26 @@
+trait,rank,feature,weight,direction,C
+openness,1,mfcc5_std,0.14005712,higher -> trait high,0.01
+openness,2,voice emotion: fearful,0.11549664,higher -> trait high,0.01
+openness,3,mfcc6_std,0.11442865,higher -> trait high,0.01
+openness,4,voice emotion: angry,0.10244602,higher -> trait high,0.01
+openness,5,mfcc24_mean,0.098111115,higher -> trait high,0.01
+conscientiousness,1,mfcc12_mean,-0.1795185,higher -> trait low,0.01
+conscientiousness,2,mfcc4_std,0.15945739,higher -> trait high,0.01
+conscientiousness,3,mfcc3_std,0.146982,higher -> trait high,0.01
+conscientiousness,4,mfcc6_mean,-0.1382843,higher -> trait low,0.01
+conscientiousness,5,mfcc40_mean,-0.12019448,higher -> trait low,0.01
+extraversion,1,mfcc35_std,0.32335111,higher -> trait high,0.1
+extraversion,2,mfcc30_std,0.2696529,higher -> trait high,0.1
+extraversion,3,mfcc39_std,-0.26074174,higher -> trait low,0.1
+extraversion,4,mfcc15_std,0.25491473,higher -> trait high,0.1
+extraversion,5,mfcc16_std,0.24231714,higher -> trait high,0.1
+agreeableness,1,mfcc6_mean,-0.13174534,higher -> trait low,0.01
+agreeableness,2,voice emotion: angry,0.12767445,higher -> trait high,0.01
+agreeableness,3,voice emotion: calm,-0.122057475,higher -> trait low,0.01
+agreeableness,4,pitch_std,-0.08650197,higher -> trait low,0.01
+agreeableness,5,mfcc6_std,0.085828125,higher -> trait high,0.01
+neuroticism,1,mfcc3_std,0.14935751,higher -> trait high,0.01
+neuroticism,2,mfcc2_mean,0.124624975,higher -> trait high,0.01
+neuroticism,3,voice emotion: sad,-0.12391548,higher -> trait low,0.01
+neuroticism,4,mfcc6_std,0.11993047,higher -> trait high,0.01
+neuroticism,5,mfcc19_mean,0.11811545,higher -> trait high,0.01

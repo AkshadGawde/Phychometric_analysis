@@ -48,11 +48,38 @@ def get_device():
     return torch.device("cpu")
 
 
+def load_pretrained(model_class, name, **kwargs):
+    """model_class.from_pretrained(name), but STOP if any weight of the model was not found in
+    the checkpoint. transformers would otherwise fill such weights with random numbers and only
+    print a notice - the model then runs, but its outputs are meaningless."""
+    model, info = model_class.from_pretrained(name, output_loading_info=True, **kwargs)
+    missing = sorted(info["missing_keys"])
+    if missing:
+        sys.exit(f"STOP: {name} was loaded with {len(missing)} randomly initialised weight(s), "
+                 f"e.g. {missing[:4]}. Its outputs would be meaningless.")
+    return model
+
+
+def free_memory():
+    """Release memory after a big model was used (call after deleting every reference to it).
+    Needed on machines with little RAM: only one heavy model should be loaded at a time."""
+    import gc
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+    except ImportError:
+        pass
+
+
 def ensure_dirs():
     """Create every output folder the pipeline writes to."""
     for d in [config.ZIPS_DIR, config.VIDEOS_DIR, config.ANNOTATIONS_DIR, config.TRANSCRIPTS_DIR,
               config.FRAMES_DIR, config.AUDIO_DIR, config.FEATURES_DIR, config.RESULTS_DIR,
-              config.MODELS_DIR]:
+              config.MODELS_DIR, config.DIAGNOSTICS_DIR]:
         os.makedirs(d, exist_ok=True)
 
 
@@ -165,18 +192,19 @@ def load_feature_cache(name, source_mtime=None):
             if source_mtime is None or source_mtime(v) <= saved_at}
 
 
-def cached_extract(names, ids, compute_batch, source_mtime, batch_size, desc):
+def cached_extract(names, ids, compute_batch, source_mtime, batch_size, desc, use_cache=True):
     """Fill features/<name>.npy for every name in `names` (all produced by the same model).
 
     compute_batch(batch_ids) -> {name: array of shape (len(batch_ids), dim)}
     Clips that already have an up-to-date row in all the files are skipped. Partial results are
     saved every FEATURE_CHECKPOINT_CLIPS clips, so an interrupted run continues where it stopped.
+    use_cache=False ignores earlier results (used when the feature definition itself changed).
     Returns (number of clips computed now, seconds spent computing them, NaN/inf values replaced).
     """
     import time
     from tqdm import tqdm
     log = get_logger("features")
-    cache = {name: load_feature_cache(name, source_mtime) for name in names}
+    cache = {name: load_feature_cache(name, source_mtime) if use_cache else {} for name in names}
     todo = [v for v in ids if not all(v in cache[name] for name in names)]
     log.info(f"{desc}: {len(ids)} clips, {len(ids) - len(todo)} already done, {len(todo)} to compute")
 
@@ -241,10 +269,44 @@ def stale_feature_files(skip=()):
     return stale
 
 
+def require_features_match_ids():
+    """HARD CHECK for the modelling phases (6-8): stop if ids.csv does not list the clips of
+    splits.csv, or if ANY feature file in features/ does not have exactly the rows of ids.csv,
+    in the same order. A file that is out of step would silently pair one clip's features
+    with another clip's labels."""
+    if not os.path.exists(config.IDS_CSV):
+        sys.exit(f"Missing {config.IDS_CSV} - run the feature scripts (src/03, 04, 05) first.")
+    # The labels come from splits.csv, the features follow ids.csv: both must list the same clips.
+    if read_ids() != load_splits()["video_id"].tolist():
+        sys.exit("STOP: features/ids.csv does not list the same clips as data/splits.csv "
+                 "(splits.csv changed after the features were made).\n"
+                 "  Re-run src/02_preprocess.py and the feature scripts (src/03, 04, 05).")
+    stale = stale_feature_files()
+    if stale:
+        sys.exit("STOP: these feature files do not match features/ids.csv: "
+                 + ", ".join(f"{name}.npy" for name in stale)
+                 + "\n  Re-run the script that makes them (src/03_features_visual.py, "
+                   "src/04_features_audio.py or src/05_features_text.py) with the same MAX_CLIPS / "
+                   "USE_HEAVY_MODELS as the rest,\n  or delete the files if they are left over "
+                   "from another run.")
+
+
+def load_features(names):
+    """Feature matrices for the modelling phases, as {name: array (N, dim)} in ids.csv order.
+    Runs the hard check first, so mismatched files can never be loaded."""
+    require_features_match_ids()
+    out = {}
+    for name in names:
+        if not os.path.exists(feature_path(name)):
+            sys.exit(f"Missing {feature_path(name)} - run its feature script first.")
+        out[name] = np.load(feature_path(name))
+    return out
+
+
 # ----------------------------------------------------------------------------
 # Metrics
 # ----------------------------------------------------------------------------
-def classification_metrics(y_true, y_pred, y_prob=None, name=""):
+def classification_metrics(y_true, y_pred, y_prob=None, name="", quiet=False):
     """Binary metrics for one trait: acc, precision, recall, f1, auc.
 
     If the true labels contain only ONE class (happens in tiny smoke subsets), precision,
@@ -257,6 +319,8 @@ def classification_metrics(y_true, y_pred, y_prob=None, name=""):
     out = {"acc": accuracy_score(y_true, y_pred),
            "precision": np.nan, "recall": np.nan, "f1": np.nan, "auc": np.nan}
     if len(np.unique(y_true)) < 2:
+        if quiet:                                  # used while comparing candidates on validation
+            return out
         get_logger("metrics").info(
             f"WARNING: only one class in the true labels{' of ' + name if name else ''} "
             f"-> precision/recall/F1/AUC = NaN")
@@ -288,6 +352,19 @@ PLOT = {
     # Series colours, always used in this order (colour-blind-safe as neighbours).
     "series": ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
 }
+
+
+# One fixed colour per thing, in every figure: a modality or fusion type never changes colour.
+SERIES_COLORS = {
+    "visual": PLOT["series"][0], "audio": PLOT["series"][1], "text": PLOT["series"][2],
+    "early": PLOT["series"][3], "late": PLOT["series"][4], "intermediate": PLOT["series"][5],
+    "late_weighted": PLOT["series"][6], "text_tfidf": PLOT["muted"],
+}
+
+
+def fake_note():
+    """Text added to figure titles while the labels are the random smoke-test dummies."""
+    return "  [FAKE LABELS - not real results]" if labels_are_fake() else ""
 
 
 def setup_plots():

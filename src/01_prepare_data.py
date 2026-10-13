@@ -111,27 +111,25 @@ def unzip_all():
 # ----------------------------------------------------------------------------
 # Step 2: load labels + transcripts
 # ----------------------------------------------------------------------------
-def find_pkl(folder, expected_name):
-    """Pick the pkl to use from `folder`, or stop with a precise message if there is none.
+def find_pkls(folder, official_names):
+    """The label / transcript files to use from `folder`, or stop if there is none.
 
-    Preference: the official file name > any other pkl > the smoke-test DUMMY file.
-    So a dummy / partial file can never silently win over the real one.
+    1. the official ChaLearn files (training, validation, test): ALL that are present are used
+    2. otherwise any other pkl (e.g. the Hugging Face transcript subset)
+    3. otherwise the smoke-test DUMMY file
+    So a dummy or partial file can never win over a real one.
     """
     found = sorted(glob.glob(os.path.join(folder, "*.pkl")))
     if not found:
-        sys.exit(f"\nMISSING FILE: {expected_name}\n"
+        sys.exit(f"\nMISSING FILE: {official_names[0]}\n"
                  f"  Put it in: {folder}/\n"
                  f"  (or put the archive that contains it in {config.ZIPS_DIR}/ and re-run)")
-
-    def rank(path):
-        name = os.path.basename(path)
-        if name == expected_name:
-            return 0
-        return 2 if "dummy" in name.lower() else 1
-
-    chosen = min(found, key=rank)
-    if len(found) > 1:
-        log.info(f"several pkl files in {folder}, using {os.path.basename(chosen)}")
+    official = [os.path.join(folder, n) for n in official_names if os.path.join(folder, n) in found]
+    other = [path for path in found if "dummy" not in os.path.basename(path).lower()]
+    chosen = official or other or found
+    ignored = [os.path.basename(path) for path in found if path not in chosen]
+    if ignored:
+        log.info(f"ignored in {os.path.basename(folder)}/: {ignored}")
     return chosen
 
 
@@ -143,23 +141,55 @@ def load_pkl(path):
     return data
 
 
+def load_annotations(paths):
+    """Merge the annotation files into one {trait: {video_filename: score}}.
+    ChaLearn ships separate files for its own train / validation / test parts; we make our own
+    split in add_split(), so the labels of all three parts are pooled here."""
+    merged, clashes = {}, 0
+    for path in paths:
+        for key, scores in load_pkl(path).items():
+            if not isinstance(scores, dict):          # e.g. the marker entry of the DUMMY file
+                merged.setdefault(key, scores)
+                continue
+            target = merged.setdefault(key, {})
+            for video, score in scores.items():
+                if video in target and target[video] != score:
+                    clashes += 1                      # same clip, two different scores
+                target.setdefault(video, score)       # the first file wins
+    if clashes:
+        log.info(f"WARNING: {clashes} score(s) differ between annotation files; the first file was kept")
+    return merged
+
+
+def load_transcripts(paths):
+    """Merge the transcript files into one {video_filename: text} (the first file wins)."""
+    merged = {}
+    for path in paths:
+        for video, text in load_pkl(path).items():
+            merged.setdefault(video, text)
+    return merged
+
+
 def build_table():
     """One row per clip that has a video on disk AND labels for all 5 traits."""
-    annotation_path = find_pkl(config.ANNOTATIONS_DIR, config.REAL_ANNOTATION_NAME)
-    annotations = load_pkl(annotation_path)
-    transcripts = load_pkl(find_pkl(config.TRANSCRIPTS_DIR, config.REAL_TRANSCRIPT_NAME))
+    annotation_paths = find_pkls(config.ANNOTATIONS_DIR, config.REAL_ANNOTATION_NAMES)
+    annotations = load_annotations(annotation_paths)
+    transcripts = load_transcripts(find_pkls(config.TRANSCRIPTS_DIR, config.REAL_TRANSCRIPT_NAMES))
+    used = [os.path.basename(path) for path in annotation_paths]
+    log.info(f"labels from: {used}")
 
     # Smoke-test dummy labels (random numbers)? Warn loudly and leave a marker file next to
     # splits.csv so that every later phase repeats the warning.
-    is_fake = (config.DUMMY_KEY in annotations
-               or "dummy" in os.path.basename(annotation_path).lower())
+    is_fake = config.DUMMY_KEY in annotations or any("dummy" in name.lower() for name in used)
     if is_fake:
         utils.print_fake_labels_banner()
         with open(config.FAKE_LABELS_MARKER, "w") as f:
-            f.write("data/splits.csv was built from RANDOM dummy labels "
-                    f"({os.path.basename(annotation_path)}).\nResults are meaningless.\n")
+            f.write(f"data/splits.csv was built from RANDOM dummy labels ({used}).\n"
+                    "Results are meaningless.\n")
     elif os.path.exists(config.FAKE_LABELS_MARKER):
         os.remove(config.FAKE_LABELS_MARKER)
+        log.info("REAL labels in use: removed the fake-labels marker "
+                 f"{os.path.basename(config.FAKE_LABELS_MARKER)}")
 
     # Expected layout: {trait_name: {video_filename: score}} (+ "interview", which we ignore)
     missing_traits = [t for t in config.TRAITS if t not in annotations]
@@ -174,8 +204,8 @@ def build_table():
     labelled = [v for v in videos if all(v in annotations[t] for t in config.TRAITS)]
     log.info(f"videos on disk: {len(videos)}, with labels: {len(labelled)}")
     if not labelled:
-        sys.exit("None of the videos on disk appear in the annotation pkl - "
-                 "are the videos from the TRAINING set (training80_XX.zip)?")
+        sys.exit("None of the videos on disk appear in the annotation file(s) - "
+                 "do the video file names still have their ChaLearn names?")
 
     # Cap at MAX_CLIPS with a seeded shuffle so the subset is random but repeatable.
     rng = np.random.RandomState(config.SEED)
@@ -280,7 +310,8 @@ def acceptance_check(df):
         for p in problems:
             log.info(f"ACCEPTANCE FAILED: {p}")
         sys.exit(1)
-    log.info("ACCEPTANCE CHECK PASSED: no group leakage, positive rates 45-55%, no NaN")
+    log.info("ACCEPTANCE CHECK PASSED: no group leakage, train positive rates 45-55% "
+             "(or within one clip of an even split), no NaN")
 
 
 def main():

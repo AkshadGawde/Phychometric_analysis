@@ -15,5 +15,6 @@ python src/05_features_text.py
 python src/06_unimodal.py
 python src/07_fusion.py
 python src/08_ablation.py
+python src/08b_diagnostics.py
 python src/09_analysis.py
-echo "Done. See results/summary.md"
+echo "Done. See results/REPORT.md and results/summary.md"

@@ -1,0 +1,101 @@
+trait,side,rank,word,weight,C
+openness,high,1,i,0.028870312,0.01
+openness,high,2,about,0.022347497,0.01
+openness,high,3,so,0.019641908,0.01
+openness,high,4,was,0.018115107,0.01
+openness,high,5,i have,0.017645584,0.01
+openness,high,6,know,0.016876934,0.01
+openness,high,7,always,0.01584468,0.01
+openness,high,8,by,0.013823732,0.01
+openness,high,9,to,0.013368131,0.01
+openness,high,10,them,0.012853648,0.01
+openness,low,1,use,-0.014985897,0.01
+openness,low,2,your,-0.013308329,0.01
+openness,low,3,three,-0.012440112,0.01
+openness,low,4,now,-0.0121266525,0.01
+openness,low,5,do,-0.011887463,0.01
+openness,low,6,than,-0.010508074,0.01
+openness,low,7,we,-0.010465138,0.01
+openness,low,8,got,-0.010405608,0.01
+openness,low,9,here,-0.0103974985,0.01
+openness,low,10,i had,-0.010230106,0.01
+conscientiousness,high,1,year,3.5598023,10.0
+conscientiousness,high,2,is,3.4865656,10.0
+conscientiousness,high,3,it would,3.4324481,10.0
+conscientiousness,high,4,to,3.1417527,10.0
+conscientiousness,high,5,these,3.0386164,10.0
+conscientiousness,high,6,by,3.0011103,10.0
+conscientiousness,high,7,things,2.9370499,10.0
+conscientiousness,high,8,soon,2.9349797,10.0
+conscientiousness,high,9,of the,2.8284943,10.0
+conscientiousness,high,10,if it's,2.7679207,10.0
+conscientiousness,low,1,you ever,-3.2211783,10.0
+conscientiousness,low,2,from the,-3.138309,10.0
+conscientiousness,low,3,don't have,-2.867832,10.0
+conscientiousness,low,4,color,-2.7471628,10.0
+conscientiousness,low,5,you get,-2.7226949,10.0
+conscientiousness,low,6,of this,-2.7190423,10.0
+conscientiousness,low,7,that the,-2.71834,10.0
+conscientiousness,low,8,may,-2.6584926,10.0
+conscientiousness,low,9,listen,-2.6461573,10.0
+conscientiousness,low,10,probably,-2.6415632,10.0
+extraversion,high,1,i,0.033554945,0.01
+extraversion,high,2,really,0.023166545,0.01
+extraversion,high,3,this,0.022319695,0.01
+extraversion,high,4,so,0.020924103,0.01
+extraversion,high,5,have,0.017108647,0.01
+extraversion,high,6,about,0.015854964,0.01
+extraversion,high,7,school,0.014779186,0.01
+extraversion,high,8,will,0.014554271,0.01
+extraversion,high,9,always,0.014453981,0.01
+extraversion,high,10,was,0.013524851,0.01
+extraversion,low,1,a,-0.018576192,0.01
+extraversion,low,2,your,-0.016530596,0.01
+extraversion,low,3,do,-0.014354189,0.01
+extraversion,low,4,use,-0.014277122,0.01
+extraversion,low,5,stuff,-0.0141219385,0.01
+extraversion,low,6,other,-0.0134948045,0.01
+extraversion,low,7,you know,-0.012772154,0.01
+extraversion,low,8,whatever,-0.012486614,0.01
+extraversion,low,9,take,-0.011098875,0.01
+extraversion,low,10,i do,-0.010954096,0.01
+agreeableness,high,1,of,0.022313112,0.01
+agreeableness,high,2,that,0.021776667,0.01
+agreeableness,high,3,in,0.021619461,0.01
+agreeableness,high,4,the,0.019928956,0.01
+agreeableness,high,5,but,0.019463846,0.01
+agreeableness,high,6,kind of,0.016603146,0.01
+agreeableness,high,7,kind,0.016603146,0.01
+agreeableness,high,8,in the,0.01591515,0.01
+agreeableness,high,9,or,0.015631935,0.01
+agreeableness,high,10,have,0.015158905,0.01
+agreeableness,low,1,hair,-0.02106474,0.01
+agreeableness,low,2,i'm,-0.015727434,0.01
+agreeableness,low,3,my,-0.015622169,0.01
+agreeableness,low,4,on,-0.013880313,0.01
+agreeableness,low,5,are,-0.013742956,0.01
+agreeableness,low,6,i don't,-0.012803858,0.01
+agreeableness,low,7,your,-0.012780926,0.01
+agreeableness,low,8,tell,-0.012256117,0.01
+agreeableness,low,9,do you,-0.011900186,0.01
+agreeableness,low,10,do,-0.011795976,0.01
+neuroticism,high,1,so,1.2195301,1.0
+neuroticism,high,2,always,1.122531,1.0
+neuroticism,high,3,did,0.8925099,1.0
+neuroticism,high,4,see,0.8550629,1.0
+neuroticism,high,5,to,0.83064955,1.0
+neuroticism,high,6,of,0.8235209,1.0
+neuroticism,high,7,in,0.8196599,1.0
+neuroticism,high,8,kind,0.7888949,1.0
+neuroticism,high,9,kind of,0.7888949,1.0
+neuroticism,high,10,in a,0.7850013,1.0
+neuroticism,low,1,tell,-0.9870658,1.0
+neuroticism,low,2,do,-0.89530367,1.0
+neuroticism,low,3,i don't,-0.87220246,1.0
+neuroticism,low,4,use,-0.80116403,1.0
+neuroticism,low,5,are you,-0.7705831,1.0
+neuroticism,low,6,and i,-0.72707313,1.0
+neuroticism,low,7,and a,-0.7136128,1.0
+neuroticism,low,8,don't have,-0.7049625,1.0
+neuroticism,low,9,to a,-0.6895551,1.0
+neuroticism,low,10,may,-0.67595774,1.0

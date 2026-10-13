@@ -158,9 +158,10 @@ def fetch_transcripts(present):
 # ----------------------------------------------------------------------------
 def make_dummy_annotations(present):
     """Random scores in [0, 1], same layout as the official file: {trait: {filename: score}}."""
-    real = os.path.join(config.ANNOTATIONS_DIR, config.REAL_ANNOTATION_NAME)
-    if os.path.exists(real):
-        sys.exit(f"{real} exists - real labels are available, refusing to create dummy labels.")
+    real = [n for n in config.REAL_ANNOTATION_NAMES
+            if os.path.exists(os.path.join(config.ANNOTATIONS_DIR, n))]
+    if real:
+        sys.exit(f"Real labels are available ({real}) - refusing to create dummy labels.")
 
     rng = np.random.RandomState(config.SEED)
     names = sorted(present)
