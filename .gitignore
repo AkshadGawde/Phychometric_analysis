@@ -8,3 +8,6 @@ data/raw/
 data/processed/
 features/*.npy
 results/models/
+
+# your own voice recordings (record_voice.sh)
+recordings/

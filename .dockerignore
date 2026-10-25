@@ -1,0 +1,9 @@
+# Only what the API needs goes into the image (see Dockerfile). Everything else stays out:
+# data, features, trained models (downloaded at start from the private repo), the web app, venvs.
+*
+!config.py
+!requirements-server.txt
+!src/
+!app/
+**/__pycache__
+**/*.pyc

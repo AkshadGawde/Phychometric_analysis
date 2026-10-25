@@ -31,12 +31,11 @@ import os
 import sys
 import time
 
-import numpy as np
-import torch
 from PIL import Image
 
 import utils
 import config
+from inference import visual
 
 log = utils.get_logger("03_visual")
 
@@ -51,56 +50,26 @@ def frames_mtime(video_id):
     return max(os.path.getmtime(utils.frame_path(video_id, k)) for k in range(config.N_FRAMES))
 
 
-def mean_over_frames(per_frame, n_clips):
-    """(n_clips * N_FRAMES, dim) -> (n_clips, dim): average the frames of each clip."""
-    return per_frame.view(n_clips, config.N_FRAMES, -1).mean(dim=1).cpu().numpy()
-
-
 # ----------------------------------------------------------------------------
-# 1. ResNet-50
+# The models (shared with the app: src/inference/visual.py), applied clip batch by clip batch
 # ----------------------------------------------------------------------------
-def build_resnet(device):
-    from torchvision import transforms
-    from torchvision.models import ResNet50_Weights, resnet50
-    model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
-    model.fc = torch.nn.Identity()            # drop the ImageNet classifier -> 2048-d output
-    model = model.eval().to(device)           # eval(): fixed batch-norm statistics, no dropout
-    # Frames are already IMG_SIZE x IMG_SIZE face crops, so only scale to [0,1] and normalise.
-    to_tensor = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean=config.IMAGENET_MEAN, std=config.IMAGENET_STD),
-    ])
+def build_resnet_batches(device):
+    embed = visual.build_resnet(device)
 
-    @torch.no_grad()
     def compute_batch(batch_ids):
-        images = [to_tensor(img) for v in batch_ids for img in load_frames(v)]
-        features = model(torch.stack(images).to(device))             # (clips * frames, 2048)
-        return {"visual_cnn": mean_over_frames(features, len(batch_ids))}
+        features = embed([img for v in batch_ids for img in load_frames(v)])   # (clips * frames, 2048)
+        return {"visual_cnn": visual.mean_over_frames(features, len(batch_ids))}
 
     return compute_batch
 
 
-# ----------------------------------------------------------------------------
-# 2. ViT face-expression model
-# ----------------------------------------------------------------------------
-def build_vit(device):
-    from transformers import AutoImageProcessor, AutoModelForImageClassification
-    processor = AutoImageProcessor.from_pretrained(config.FACE_EMOTION_MODEL)
-    model = utils.load_pretrained(AutoModelForImageClassification, config.FACE_EMOTION_MODEL)
-    model = model.eval().to(device)
-    # Fixed class order = the model's own output index order (0, 1, 2, ...).
-    labels = [model.config.id2label[i] for i in range(model.config.num_labels)]
+def build_vit_batches(device):
+    analyse, labels = visual.build_vit(device)
 
-    @torch.no_grad()
     def compute_batch(batch_ids):
-        images = [img for v in batch_ids for img in load_frames(v)]
-        pixels = processor(images=images, return_tensors="pt")["pixel_values"].to(device)
-        hidden = model.vit(pixel_values=pixels).last_hidden_state    # (clips * frames, tokens, 768)
-        cls = hidden[:, 0]                                           # CLS token = whole-image summary
-        # The classifier gives one logit per class; softmax keeps ALL classes (no top-k cut).
-        probabilities = torch.softmax(model.classifier(cls), dim=-1)
-        return {"visual_emotion": mean_over_frames(probabilities, len(batch_ids)),
-                "visual_vit": mean_over_frames(cls, len(batch_ids))}
+        probabilities, cls = analyse([img for v in batch_ids for img in load_frames(v)])
+        return {"visual_emotion": visual.mean_over_frames(probabilities, len(batch_ids)),
+                "visual_vit": visual.mean_over_frames(cls, len(batch_ids))}
 
     return compute_batch, labels
 
@@ -142,11 +111,11 @@ def main():
     log.info(f"{len(ids)} clips, device = {device}, USE_HEAVY_MODELS = {config.USE_HEAVY_MODELS}")
 
     names = ["visual_cnn"]
-    run_model("ResNet-50", ["visual_cnn"], ids, build_resnet, device)
+    run_model("ResNet-50", ["visual_cnn"], ids, build_resnet_batches, device)
 
     if config.USE_HEAVY_MODELS:
         labels = run_model("ViT face-expression", ["visual_emotion", "visual_vit"], ids,
-                           build_vit, device)
+                           build_vit_batches, device)
         with open(config.VISUAL_EMOTION_LABELS_JSON, "w") as f:
             json.dump(labels, f, indent=2)
         log.info(f"visual_emotion column order: {labels}")

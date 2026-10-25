@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the whole pipeline, Phase 1 -> Phase 9.
+# Runs the whole pipeline, Phase 1 -> Phase 9, then exports the bundle for the live app (Phase 10).
 #   ./run_all.sh                                       values from config.py
 #   MAX_CLIPS=50 USE_HEAVY_MODELS=0 ./run_all.sh       fast smoke test
 #   MAX_CLIPS=2000 USE_HEAVY_MODELS=1 ./run_all.sh     full run
@@ -17,4 +17,5 @@ python src/07_fusion.py
 python src/08_ablation.py
 python src/08b_diagnostics.py
 python src/09_analysis.py
+python src/10_export_bundle.py
 echo "Done. See results/REPORT.md and results/summary.md"

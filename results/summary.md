@@ -25,25 +25,25 @@
 | Always the majority class | 0.465 | 0.635 | 0.500 | – |
 | Random guessing (class balance of train) | 0.501 | 0.494 | 0.503 | – |
 | Always the training average score | – | – | – | 0.882 [0.873, 0.892] |
-| Face (visual) | 0.622 [0.581, 0.659] | 0.604 [0.542, 0.652] | 0.660 [0.611, 0.706] | 0.890 [0.881, 0.897] |
-| Voice (audio) | 0.655 [0.610, 0.698] | 0.634 [0.567, 0.687] | 0.718 [0.665, 0.767] | 0.897 [0.888, 0.904] |
-| Words (text) | 0.536 [0.494, 0.573] | 0.533 [0.477, 0.585] | 0.552 [0.502, 0.601] | 0.875 [0.864, 0.886] |
-| Words, TF-IDF baseline | 0.536 [0.500, 0.571] | 0.532 [0.478, 0.577] | 0.541 [0.498, 0.586] | 0.866 [0.856, 0.875] |
-| Early fusion | 0.651 [0.608, 0.689] | 0.615 [0.556, 0.666] | 0.712 [0.661, 0.757] | 0.896 [0.888, 0.903] |
+| Face (visual) | 0.621 [0.577, 0.662] | 0.632 [0.572, 0.684] | 0.660 [0.612, 0.705] | 0.890 [0.881, 0.897] |
+| Voice (audio) | 0.655 [0.612, 0.699] | 0.649 [0.588, 0.702] | 0.718 [0.665, 0.767] | 0.897 [0.888, 0.904] |
+| Words (text) | 0.510 [0.469, 0.549] | 0.561 [0.510, 0.609] | 0.552 [0.502, 0.601] | 0.875 [0.864, 0.886] |
+| Words, TF-IDF baseline | 0.503 [0.468, 0.539] | 0.563 [0.510, 0.609] | 0.541 [0.498, 0.586] | 0.866 [0.856, 0.875] |
+| Early fusion | 0.655 [0.613, 0.693] | 0.629 [0.572, 0.677] | 0.712 [0.661, 0.757] | 0.896 [0.888, 0.903] |
 | Intermediate fusion (network) | 0.667 [0.620, 0.711] | 0.625 [0.555, 0.684] | 0.738 [0.683, 0.786] | – |
-| Late fusion (average) | 0.624 [0.587, 0.661] | 0.608 [0.553, 0.657] | 0.697 [0.654, 0.739] | 0.899 [0.891, 0.907] |
-| Late fusion (weighted) | 0.626 [0.588, 0.663] | 0.608 [0.555, 0.658] | 0.701 [0.658, 0.743] | 0.900 [0.891, 0.907] |
+| Late fusion (average) | 0.658 [0.617, 0.697] | 0.665 [0.610, 0.715] | 0.731 [0.682, 0.778] | 0.899 [0.891, 0.907] |
+| Late fusion (weighted) | 0.658 [0.617, 0.699] | 0.664 [0.610, 0.714] | 0.733 [0.683, 0.780] | 0.900 [0.891, 0.907] |
 
 ## Ablation (late fusion (weighted))
 
 | trait | without face | without voice | without words |
 |---|---|---|---|
-| Openness | +0.056 | +0.017 | -0.068 |
-| Conscientiousness | +0.003 | +0.073 | -0.000 |
-| Extraversion | +0.041 | -0.021 | -0.043 |
-| Agreeableness | -0.021 | +0.004 | +0.007 |
-| Neuroticism | -0.070 | +0.025 | +0.034 |
-| **mean** | **+0.002** | **+0.019** | **-0.014** |
+| Openness | +0.026 | +0.003 | -0.010 |
+| Conscientiousness | +0.000 | +0.028 | -0.031 |
+| Extraversion | +0.050 | +0.042 | -0.028 |
+| Agreeableness | +0.040 | +0.058 | +0.014 |
+| Neuroticism | +0.012 | +0.090 | +0.000 |
+| **mean** | **+0.026** | **+0.044** | **-0.011** |
 
 ## Top cues per trait
 
@@ -85,7 +85,7 @@
 
 ## Conclusion: do face, voice and words improve psychometric assessment when combined, and which modality contributes most?
 
-**Learning beyond the baselines — yes, but modestly:** the model chosen on validation, late fusion (weighted), reaches a mean test AUC of 0.701 (95% CI 0.658–0.743) and accuracy 0.626 (0.588–0.663), against AUC 0.503 and accuracy 0.501 for random guessing and 0.465 accuracy for always answering the most common class; both intervals lie clearly above those baselines, but its F1 (0.608) is below the 0.635 that "always high" gets, so F1 alone would hide the learning. **On the raw 0–1 scores** the best 1 − MAE is 0.900 (late fusion (weighted)), only +0.017 better than always predicting the training average (0.882), because the scores bunch up around the middle. **Fusion is not significantly better than the best single modality:** late fusion (weighted) changes mean F1 by -0.026 (95% CI -0.072 to +0.020) and AUC by -0.017 (-0.058 to +0.022) compared with voice (audio); both intervals include zero (on the test clips the highest AUC was intermediate fusion (network) at 0.738, but it was not the validation choice). **Voice, face, words:** on its own the strongest modality is voice (AUC 0.718), followed by face (0.660) and words (0.552); in the ablation removing voice hurts most, but every mean change is small (between -0.014 and +0.019 F1) next to the ±0.052 uncertainty of the F1 itself. **Overfitting is clear but did not fool model selection:** the most flexible models fit their training clips much better (train − test F1 up to 0.46 for words, tf-idf baseline), while the compact voice model shows only 0.08; validation and test F1 agree to within 0.030 for every model, so choices made on validation hold up on test. **More data would help somewhat:** going from 261 to 1041 training clips raises test AUC from 0.654 to 0.701 (last step +0.004) while F1 stays near 0.608, so the ranking of clips keeps improving with data, though the gains are getting smaller. **Compared with published work:** the best published First Impressions systems reach about 0.91 mean 1 − MAE with all 10,000 clips and models trained end to end; our best 0.900 uses 1500 clips (15% of the data), frozen pretrained features and 8 frames per clip, so it is 0.010 lower. Because always guessing the average already scores 0.882 here, that gap is bigger than it looks, and the comparison is only rough since our test clips are not the official test set.
+**Learning beyond the baselines — yes, but modestly:** the model chosen on validation, late fusion (weighted), reaches a mean test AUC of 0.733 (95% CI 0.683–0.780) and accuracy 0.658 (0.617–0.699), against AUC 0.503 and accuracy 0.501 for random guessing and 0.465 accuracy for always answering the most common class; both intervals lie clearly above those baselines, but its F1 (0.664) is only just above the 0.635 that "always high" gets, so F1 alone would hide the learning. **On the raw 0–1 scores** the best 1 − MAE is 0.900 (late fusion (weighted)), only +0.017 better than always predicting the training average (0.882), because the scores bunch up around the middle. **Fusion is not significantly better than the best single modality:** late fusion (weighted) changes mean F1 by +0.014 (95% CI -0.014 to +0.046) and AUC by +0.015 (-0.007 to +0.036) compared with voice (audio); both intervals include zero (on the test clips the highest AUC was intermediate fusion (network) at 0.738, but it was not the validation choice). **Voice, face, words:** on its own the strongest modality is voice (AUC 0.718), followed by face (0.660) and words (0.552); in the ablation removing voice hurts most, but every mean change is small (between -0.011 and +0.044 F1) next to the ±0.052 uncertainty of the F1 itself. **Overfitting is clear but did not fool model selection:** the most flexible models fit their training clips much better (train − test F1 up to 0.38 for words, tf-idf baseline), while the compact voice model shows only 0.08; validation and test F1 agree to within 0.027 for every model, so choices made on validation hold up on test. **More data would help somewhat:** going from 261 to 1041 training clips raises test AUC from 0.672 to 0.733 (last step +0.016) while F1 stays near 0.664, so the ranking of clips keeps improving with data, though the gains are getting smaller. **Compared with published work:** the best published First Impressions systems reach about 0.91 mean 1 − MAE with all 10,000 clips and models trained end to end; our best 0.900 uses 1500 clips (15% of the data), frozen pretrained features and 8 frames per clip, so it is 0.010 lower. Because always guessing the average already scores 0.882 here, that gap is bigger than it looks, and the comparison is only rough since our test clips are not the official test set.
 
 ## Limitations
 

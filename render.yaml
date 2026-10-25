@@ -1,0 +1,21 @@
+# Render Blueprint for the API (DEPLOY.md). The web app is deployed separately on Vercel.
+services:
+  - type: web
+    name: vip-pipeline-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: pro                 # 4 GB RAM - the models need ~3 GB; smaller plans run out of memory
+    healthCheckPath: /api/health
+    envVars:
+      - key: MODELS_REPO      # your PRIVATE Hugging Face repo with the trained models
+        sync: false
+      - key: HF_TOKEN         # a read token for that repo
+        sync: false
+      - key: ALLOWED_ORIGINS  # your Vercel URL, e.g. https://vip-visualizer.vercel.app
+        sync: false
+      - key: WHISPER_MODEL    # base.en: about twice as fast as small.en on CPU, a bit less accurate
+        value: base.en
+      - key: OMP_NUM_THREADS  # match the plan's CPUs, or torch oversubscribes and slows down
+        value: "2"
+      - key: MAX_QUEUE
+        value: "5"

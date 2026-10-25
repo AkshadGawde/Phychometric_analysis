@@ -30,26 +30,18 @@ Run:  python src/05_features_text.py
 import hashlib
 import json
 import os
-import re
 import sys
 import time
 
 import joblib
-import numpy as np
-import torch
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 import utils
 import config
+from inference import text
+from inference.text import model_text
 
 log = utils.get_logger("05_text")
-
-
-def model_text(raw_text, missing):
-    """Transcript as the transformer models read it: notes removed, punctuation and case kept."""
-    if missing:
-        return ""
-    return re.sub(r"\s+", " ", re.sub(r"\[[^\]]*\]", " ", str(raw_text))).strip()
 
 
 # ----------------------------------------------------------------------------
@@ -75,48 +67,16 @@ def tfidf_features(df, ids):
 
 
 # ----------------------------------------------------------------------------
-# 2. MiniLM sentence embedding
+# 2 + 3. MiniLM and text emotion (shared with the app: src/inference/text.py), applied batch by batch
 # ----------------------------------------------------------------------------
 def build_minilm(device, texts):
-    from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer(config.TEXT_EMBED_MODEL, device=str(device))
-    model.eval()
-
-    def compute_batch(batch_ids):
-        out = np.zeros((len(batch_ids), config.FEATURE_DIMS["text_minilm"]), dtype=np.float32)
-        filled = [i for i, v in enumerate(batch_ids) if texts[v]]     # empty text stays all-zero
-        if filled:
-            with torch.no_grad():
-                out[filled] = model.encode([texts[batch_ids[i]] for i in filled],
-                                           batch_size=config.TEXT_BATCH_CLIPS,
-                                           convert_to_numpy=True, show_progress_bar=False)
-        return {"text_minilm": out}
-
-    return compute_batch
+    embed = text.build_minilm(device)
+    return lambda batch_ids: {"text_minilm": embed([texts[v] for v in batch_ids])}
 
 
-# ----------------------------------------------------------------------------
-# 3. Text emotion model
-# ----------------------------------------------------------------------------
 def build_text_emotion(device, texts):
-    from transformers import AutoModelForSequenceClassification, AutoTokenizer
-    tokenizer = AutoTokenizer.from_pretrained(config.TEXT_EMOTION_MODEL)
-    model = utils.load_pretrained(AutoModelForSequenceClassification, config.TEXT_EMOTION_MODEL)
-    model = model.eval().to(device)
-    labels = [model.config.id2label[i] for i in range(model.config.num_labels)]
-
-    @torch.no_grad()
-    def compute_batch(batch_ids):
-        out = np.zeros((len(batch_ids), len(labels)), dtype=np.float32)
-        filled = [i for i, v in enumerate(batch_ids) if texts[v]]
-        if filled:
-            encoded = tokenizer([texts[batch_ids[i]] for i in filled], padding=True, truncation=True,
-                                max_length=config.TEXT_MAX_TOKENS, return_tensors="pt").to(device)
-            # softmax over the logits keeps ALL classes (no top-k cut)
-            out[filled] = torch.softmax(model(**encoded).logits, dim=-1).cpu().numpy()
-        return {"text_emotion": out}
-
-    return compute_batch, labels
+    analyse, labels = text.build_text_emotion(device)
+    return (lambda batch_ids: {"text_emotion": analyse([texts[v] for v in batch_ids])}), labels
 
 
 # ----------------------------------------------------------------------------

@@ -161,6 +161,12 @@ RIDGE_ALPHA_GRID = [0.1, 1, 10, 100]      # tuned on the validation split
 PCA_MIN_DIMS = 512                        # PCA is used only when a model has more inputs than this
 PCA_VARIANCE = 0.95                       # keep enough components for 95% of the variance
 MLP_HIDDEN = (128,)
+# Probability calibration of every single-modality / early-fusion classifier (Platt scaling on
+# 5-fold out-of-fold train predictions, folds grouped by YouTube video). Turned on after the first
+# report: two face models gave P < 0.02 or > 0.98 for most held-out clips and dominated late fusion.
+CALIBRATE = True
+CALIBRATION_FOLDS = 5
+CALIBRATION_MIN_SLOPE = 1e-6      # only for a slope <= 0 (useless out of fold): keeps the ranking, flat probabilities
 
 # Intermediate fusion network (Phase 7)
 FUSION_BRANCH_DIMS = (128, 64)            # each modality: d -> 128 -> 64
@@ -177,6 +183,18 @@ FUSION_CSV = os.path.join(RESULTS_DIR, "fusion.csv")
 ABLATION_CSV = os.path.join(RESULTS_DIR, "ablation.csv")
 BEST_FUSION_JSON = os.path.join(RESULTS_DIR, "best_fusion.json")
 FUSION_MODEL_FILE = os.path.join(MODELS_DIR, "intermediate_fusion.pt")
+
+# ----------------------------------------------------------------------------
+# Live app (src/10_export_bundle.py, src/predict.py, app/server.py) - see ROADMAP_WEB.md
+# ----------------------------------------------------------------------------
+BUNDLE_JSON = os.path.join(MODELS_DIR, "bundle.json")     # everything the app needs besides the models
+WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small.en")   # faster-whisper; "base.en" is faster
+WINDOW_SEC = 15                   # long inputs are cut into windows as long as the training clips
+WINDOW_MIN_TOTAL_SEC = 20         # ... but only inputs longer than this
+EMOTION_STEP_SEC = 5              # the speech-emotion timeline shown in the app (display only)
+APP_MAX_UPLOAD_MB = 25
+APP_MAX_INPUT_SEC = 180
+REPLAYS_DIR = os.path.join(ROOT, "app", "replays")      # recorded event streams for the demo mode
 
 # ----------------------------------------------------------------------------
 # Diagnostics (src/08b_diagnostics.py) and the final report (src/09_analysis.py)

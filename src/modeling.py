@@ -1,7 +1,8 @@
 """Shared modelling code for Phases 6-8 (unimodal models, fusion, ablation).
 
 Rules that hold everywhere in this file:
-- models are FIT on the train split only,
+- models are FIT on the train split only (including their probability calibration, which uses
+  out-of-fold predictions inside the train split, folds grouped by YouTube video),
 - every choice (C, alpha, classifier type, fusion type, when to stop training) is made on the
   VALIDATION split,
 - the test split is used once, to report the final numbers.
@@ -11,8 +12,10 @@ import itertools
 
 import numpy as np
 import torch
+from sklearn.base import clone
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LogisticRegression, Ridge
+from sklearn.model_selection import GroupKFold, cross_val_predict
 from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -80,9 +83,70 @@ def pipeline(estimator, n_inputs, force_pca=False):
     return make_pipeline(*steps, estimator)
 
 
-def fit_classifier(X_train, y_train, X_val, y_val, use_mlp=True, force_pca=False):
+class PlattCalibrated:
+    """A fitted classifier whose P(high) goes through Platt scaling: q = sigmoid(a * score + b),
+    score = the model's log-odds (see raw_score).
+
+    Why: some single-modality models are badly over-confident (e.g. the face models for
+    agreeableness and stability gave P < 0.02 or > 0.98 for most held-out clips), and late fusion
+    averages probabilities, so such a model outvoted the others. Platt scaling is monotone: it
+    never changes a model's ranking (AUC), only how sure it claims to be."""
+
+    def __init__(self, model, a, b):
+        self.model, self.a, self.b = model, float(a), float(b)
+
+    def predict_proba(self, X):
+        q = 1.0 / (1.0 + np.exp(-(self.a * raw_score(self.model, X) + self.b)))
+        return np.column_stack([1.0 - q, q])
+
+    def predict(self, X):
+        return (self.predict_proba(X)[:, 1] >= 0.5).astype(int)
+
+
+def raw_score(model, X):
+    """The model's log-odds for "high". LogisticRegression: its decision function, which does not
+    saturate (its probabilities round to exactly 0 / 1 for very confident clips, which would tie
+    them and change the AUC). MLP: the log-odds of its probability."""
+    if hasattr(model, "decision_function"):
+        return model.decision_function(X).astype(np.float64)
+    return log_odds(model.predict_proba(X)[:, 1])
+
+
+def log_odds(p):
+    # float64 first: the features are float32, and in float32 1 - 1e-12 rounds back to 1.0 (-> inf)
+    p = np.clip(np.asarray(p, dtype=np.float64), 1e-12, 1 - 1e-12)
+    return np.log(p / (1 - p))
+
+
+def estimator_name(model):
+    """Class name of the final estimator (inside the calibration and the pipeline)."""
+    inner = model.model if isinstance(model, PlattCalibrated) else model
+    return type(inner[-1]).__name__
+
+
+def calibrate(model, X_train, y_train, groups):
+    """Platt scaling fitted on OUT-OF-FOLD predictions of the training split.
+    The folds are grouped by YouTube video (the same person never sits on both sides, which
+    would make the out-of-fold predictions look too good), so validation and test stay untouched
+    and the fitted model itself is unchanged. Off when config.CALIBRATE is False."""
+    if not config.CALIBRATE:
+        return model
+    n_groups = len(np.unique(groups))
+    folds = GroupKFold(n_splits=min(config.CALIBRATION_FOLDS, n_groups))
+    method = "decision_function" if hasattr(model, "decision_function") else "predict_proba"
+    oof = cross_val_predict(clone(model), X_train, y_train, groups=groups, cv=folds, method=method)
+    z = (log_odds(oof[:, 1]) if method == "predict_proba" else oof.astype(np.float64)).reshape(-1, 1)
+    fit = LogisticRegression(C=1e6, max_iter=1000).fit(z, y_train)      # (almost) unpenalised
+    # A model no better than chance out of fold can get a slope <= 0, which would flip its
+    # ranking. Floor it: the ranking is kept, the probabilities shrink towards the base rate.
+    slope = max(fit.coef_[0, 0], config.CALIBRATION_MIN_SLOPE)
+    return PlattCalibrated(model, slope, fit.intercept_[0])
+
+
+def fit_classifier(X_train, y_train, X_val, y_val, use_mlp=True, force_pca=False, groups=None):
     """Fit LogisticRegression for every C (and optionally an MLP) on train; keep the candidate
-    with the best validation F1. Returns (fitted model, its name, its validation F1)."""
+    with the best validation F1; then calibrate it (see calibrate(); needs the train `groups`).
+    Returns (fitted model, its name, its validation F1 before calibration)."""
     candidates = [(f"logreg(C={C})",
                    LogisticRegression(C=C, max_iter=2000, class_weight="balanced"))
                   for C in config.LOGREG_C_GRID]
@@ -105,6 +169,8 @@ def fit_classifier(X_train, y_train, X_val, y_val, use_mlp=True, force_pca=False
             best = (model, name, score)
     if best is None:
         raise RuntimeError("no classifier could be fitted")
+    if groups is not None:
+        best = (calibrate(best[0], X_train, y_train, groups), best[1], best[2])
     return best
 
 
@@ -144,7 +210,8 @@ def train_on_matrix(data, X, trait, use_mlp=True, force_pca=False):
     """Returns a dict with the fitted models and their validation / test predictions."""
     y, s = data.labels[trait], data.scores[trait]
     clf, name, _ = fit_classifier(X[data.train], y[data.train], X[data.val], y[data.val],
-                                  use_mlp=use_mlp, force_pca=force_pca)
+                                  use_mlp=use_mlp, force_pca=force_pca,
+                                  groups=data.df["youtube_id"].values[data.train])
     ridge = fit_ridge(X[data.train], s[data.train], X[data.val], s[data.val], force_pca=force_pca)
     return {
         "classifier": clf, "classifier_name": name, "ridge": ridge,

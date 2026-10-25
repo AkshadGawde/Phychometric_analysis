@@ -433,6 +433,15 @@ def write_reports(df, r):
         "the raw 0–1 score (the official ChaLearn measure). Square brackets give the 95% confidence "
         "interval: re-sampling the test clips 1,000 times, the value stayed in this range 95% of the "
         "time. All numbers are on the test clips, which no model saw during training or tuning.")
+    if config.CALIBRATE:
+        how_to_read += (
+            "\n\n**Calibrated probabilities.** Every single-modality and early-fusion classifier passes "
+            "its P(high) through Platt scaling, fitted on out-of-fold predictions inside the training "
+            f"split ({config.CALIBRATION_FOLDS} folds grouped by YouTube video). A model that is unsure "
+            "out of fold now says about 0.5 instead of 0 or 1 - before this, the face models for "
+            "agreeableness and stability gave P < 0.02 or > 0.98 for most held-out clips and outvoted "
+            "the other modalities in late fusion. Calibration never changes a single model's ranking "
+            "(AUC); it changes accuracy / F1 at the 0.5 threshold and the late-fusion averages.")
     limitations = (
         "## Limitations\n\n"
         f"- Only {len(df)} of the 10,000 clips were used, and our own test split is smaller and "

@@ -3,21 +3,21 @@
   "best_single_modality": "audio",
   "chosen_by": "mean validation F1 over the five traits",
   "mean_val_f1": {
-    "visual": 0.6033,
-    "audio": 0.6109,
-    "text": 0.5553,
-    "early": 0.624,
-    "late": 0.6222,
-    "late_weighted": 0.6267,
+    "visual": 0.6186,
+    "audio": 0.6268,
+    "text": 0.586,
+    "early": 0.6278,
+    "late": 0.6465,
+    "late_weighted": 0.6498,
     "intermediate": 0.5979
   },
   "mean_test_f1": {
-    "visual": 0.6035,
-    "audio": 0.634,
-    "text": 0.5331,
-    "early": 0.615,
-    "late": 0.6078,
-    "late_weighted": 0.6081,
+    "visual": 0.6318,
+    "audio": 0.6492,
+    "text": 0.5611,
+    "early": 0.6294,
+    "late": 0.6646,
+    "late_weighted": 0.6636,
     "intermediate": 0.6253
   }
 }

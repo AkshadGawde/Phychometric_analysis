@@ -16,3 +16,8 @@ streamlit
 pillow
 joblib
 datasets  # smoke helper only
+# live app (ROADMAP_WEB.md)
+fastapi
+uvicorn
+python-multipart
+faster-whisper

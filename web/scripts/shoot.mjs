@@ -1,0 +1,28 @@
+// Screenshots of the running app (dev helper): node scripts/shoot.mjs OUT_DIR [width]
+import { chromium } from "@playwright/test";
+const out = process.argv[2] ?? ".";
+const width = Number(process.argv[3] ?? 1366);
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width, height: 900 }, deviceScaleFactor: 1 });
+const errors = [];
+page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+page.on("pageerror", (e) => errors.push(String(e)));
+await page.goto("http://localhost:5173/");
+await page.waitForTimeout(800);
+await page.screenshot({ path: `${out}/home-${width}.png`, fullPage: true });
+await page.getByRole("tab", { name: /Demo samples/ }).click();
+await page.waitForTimeout(600);
+await page.screenshot({ path: `${out}/samples-${width}.png` });
+await page.locator(".sample").first().click();
+await page.waitForTimeout(2500);
+await page.screenshot({ path: `${out}/running-${width}.png`, fullPage: true });
+await page.waitForSelector(".result", { timeout: 60000 });
+await page.waitForTimeout(1500);
+await page.screenshot({ path: `${out}/done-${width}.png`, fullPage: true });
+await page.goto("http://localhost:5173/#/how");
+await page.waitForSelector(".how section", { timeout: 20000 });
+await page.waitForTimeout(500);
+await page.screenshot({ path: `${out}/how-${width}.png`, fullPage: true });
+const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+console.log(JSON.stringify({ errors, horizontalOverflow: overflow }));
+await browser.close();

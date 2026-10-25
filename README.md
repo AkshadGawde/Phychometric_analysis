@@ -26,12 +26,31 @@ Research prototype about *apparent* personality. **Not a diagnostic tool.**
 | 8. Ablation | `src/08_ablation.py` | Done |
 | 8b. Diagnostics | `src/08b_diagnostics.py` | Done |
 | 9. Analysis + reports | `src/09_analysis.py` | Done |
-| 10. Streamlit demo | `app/streamlit_app.py` | Not started |
-| 11. One-command run | `run_all.sh` | Done (runs 01 → 09 including 08b) |
+| 10. Live app (replaces the Streamlit demo) | `src/10_export_bundle.py`, `src/predict.py`, `app/server.py`, `web/` | Done — see [ROADMAP_WEB.md](ROADMAP_WEB.md) |
+| 11. One-command run | `run_all.sh` | Done (runs 01 → 09 including 08b, then the bundle export) |
 
 **Final run:** 1,500 real-labelled clips, heavy models on. Every phase reads and writes
 `data/splits_final.csv`. The plain-English results are in
 [results/REPORT.md](results/REPORT.md); every output file is listed in [OUTPUTS.md](OUTPUTS.md).
+
+## Live pipeline visualizer
+
+A web app that runs the trained pipeline on one new input (your voice, a 15 s webcam clip or
+an uploaded file) and shows every stage working on it: voice, words, face, fusion, result.
+Plan and acceptance checks: [ROADMAP_WEB.md](ROADMAP_WEB.md).
+
+```bash
+make install          # once: Python + web dependencies (+ headless Chromium for the e2e test)
+./dev.sh              # API on :8000 + web on :5173 -> open http://localhost:5173
+```
+
+- One file from the command line: `python src/predict.py voice.mp3` (any audio/video format;
+  `--json out.json` for every stage, `--record NAME` to save a demo replay).
+- `make demo` serves the built app from the API alone on http://localhost:8000.
+- `make test` runs the parity, input and fusion-maths tests; `make test-browser` the headless
+  end-to-end test (needs `./dev.sh` running).
+- First start downloads Whisper `small.en` (~480 MB) and warms the models up (~1 min, ~3 GB RAM).
+- Deploying (Vercel for the web app, Render for the API): [DEPLOY.md](DEPLOY.md).
 
 ## Quick start
 
@@ -352,6 +371,13 @@ One model per modality (visual, audio, text) and per trait.
   C ∈ {0.01, 0.1, 1, 10}, and an MLP with one hidden layer of 128 units and early stopping.
   All are fitted on **train**; the one with the best **validation** F1 is kept and evaluated
   once on **test**.
+- **Calibration** (`config.CALIBRATE`, added after the first report). The kept classifier's
+  P(high) goes through Platt scaling, fitted on its out-of-fold predictions inside **train**
+  (5 folds grouped by YouTube video, so one person is never on both sides). Validation and test
+  stay untouched and each model's AUC is unchanged; only over-confidence is removed. Before it,
+  the face models for agreeableness and stability gave P < 0.02 or > 0.98 for 84–89% of held-out
+  clips and outvoted the other modalities in late fusion. A slope ≤ 0 (a model useless out of fold)
+  is floored at 1e-6: ranking kept, probabilities flat around the base rate.
 - **Regression** (the raw score). Same inputs → Ridge, alpha chosen on validation →
   MAE and the ChaLearn score 1 − MAE. Predictions are clipped to [0, 1].
 - **Baseline.** Text TF-IDF + LogisticRegression, reported as modality `text_tfidf`.
